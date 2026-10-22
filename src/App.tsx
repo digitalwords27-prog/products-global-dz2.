@@ -11,7 +11,9 @@ import {
   getSecurityConfig, 
   isSiteUnlocked,
   isAdminAuthenticated,
-  logoutAdmin
+  logoutAdmin,
+  initProductsSync,
+  initOrdersSync
 } from './services/storage';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -96,7 +98,7 @@ export default function App() {
     }
   }, [cartItems]);
 
-  // Sync Products from storage
+  // Sync Products from storage and cloud
   const syncProducts = useCallback(() => {
     setProducts(getStoredProducts());
   }, []);
@@ -104,7 +106,13 @@ export default function App() {
   useEffect(() => {
     const handleUpdate = () => syncProducts();
     window.addEventListener('products_updated', handleUpdate);
-    return () => window.removeEventListener('products_updated', handleUpdate);
+    const unsubProducts = initProductsSync();
+    const unsubOrders = initOrdersSync();
+    return () => {
+      window.removeEventListener('products_updated', handleUpdate);
+      unsubProducts();
+      unsubOrders();
+    };
   }, [syncProducts]);
 
   // Sync Security Config, Site Lock, and Admin Auth State

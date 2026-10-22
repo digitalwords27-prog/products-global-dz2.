@@ -1,5 +1,15 @@
 import { Product, Order, OrderStatus } from '../types';
 import { INITIAL_PRODUCTS } from '../data/initialProducts';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  writeBatch,
+  getDocs
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from './firebase';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'products_global_dz_products_v2',
@@ -10,6 +20,16 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_PIN = '1234';
+
+function cleanForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 // --- PRODUCTS REPOSITORY ---
 export function getStoredProducts(): Product[] {
@@ -48,6 +68,13 @@ export function addProduct(product: Omit<Product, 'id' | 'createdAt'>): Product 
   };
   const updated = [newProduct, ...products];
   saveStoredProducts(updated);
+
+  // Sync to Cloud Firestore in background
+  const path = `products/${newProduct.id}`;
+  setDoc(doc(db, 'products', newProduct.id), cleanForFirestore(newProduct)).catch((err) => {
+    handleFirestoreError(err, OperationType.CREATE, path);
+  });
+
   return newProduct;
 }
 
@@ -57,6 +84,12 @@ export function updateProduct(product: Product): void {
   if (index !== -1) {
     products[index] = product;
     saveStoredProducts([...products]);
+
+    // Sync to Cloud Firestore in background
+    const path = `products/${product.id}`;
+    setDoc(doc(db, 'products', product.id), cleanForFirestore(product)).catch((err) => {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    });
   }
 }
 
@@ -64,11 +97,60 @@ export function deleteProduct(productId: string): void {
   const products = getStoredProducts();
   const updated = products.filter((p) => p.id !== productId);
   saveStoredProducts(updated);
+
+  // Sync to Cloud Firestore in background
+  const path = `products/${productId}`;
+  deleteDoc(doc(db, 'products', productId)).catch((err) => {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  });
 }
 
 export function resetProducts(): Product[] {
   saveStoredProducts(INITIAL_PRODUCTS);
   return INITIAL_PRODUCTS;
+}
+
+// Global Cloud Sync Listener for Products
+let isProductsSyncInitialized = false;
+export function initProductsSync(): () => void {
+  if (isProductsSyncInitialized) return () => {};
+  isProductsSyncInitialized = true;
+
+  const productsCol = collection(db, 'products');
+
+  const unsubscribe = onSnapshot(
+    productsCol,
+    async (snapshot) => {
+      if (snapshot.empty) {
+        // First run on empty cloud database: Seed INITIAL_PRODUCTS to Firestore
+        try {
+          const batch = writeBatch(db);
+          INITIAL_PRODUCTS.forEach((p) => {
+            const ref = doc(db, 'products', p.id);
+            batch.set(ref, cleanForFirestore(p));
+          });
+          await batch.commit();
+        } catch (e) {
+          console.warn('Initial seeding of products in Firestore:', e);
+        }
+      } else {
+        const cloudProducts: Product[] = [];
+        snapshot.forEach((d) => {
+          cloudProducts.push(d.data() as Product);
+        });
+
+        if (cloudProducts.length > 0) {
+          // Sort or preserve order
+          saveStoredProducts(cloudProducts);
+        }
+      }
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+    }
+  );
+
+  return unsubscribe;
 }
 
 // --- ORDERS REPOSITORY ---
@@ -103,6 +185,13 @@ export function createOrder(orderData: Omit<Order, 'id' | 'createdAt' | 'status'
   };
   const updated = [newOrder, ...orders];
   saveStoredOrders(updated);
+
+  // Sync to Cloud Firestore in background
+  const path = `orders/${newOrder.id}`;
+  setDoc(doc(db, 'orders', newOrder.id), cleanForFirestore(newOrder)).catch((err) => {
+    handleFirestoreError(err, OperationType.CREATE, path);
+  });
+
   return newOrder;
 }
 
@@ -113,6 +202,12 @@ export function updateOrderStatus(orderId: string, status: OrderStatus): void {
     order.status = status;
     order.updatedAt = new Date().toISOString();
     saveStoredOrders([...orders]);
+
+    // Sync to Cloud Firestore in background
+    const path = `orders/${orderId}`;
+    setDoc(doc(db, 'orders', orderId), cleanForFirestore(order)).catch((err) => {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    });
   }
 }
 
@@ -120,6 +215,40 @@ export function deleteOrder(orderId: string): void {
   const orders = getStoredOrders();
   const updated = orders.filter((o) => o.id !== orderId);
   saveStoredOrders(updated);
+
+  // Sync to Cloud Firestore in background
+  const path = `orders/${orderId}`;
+  deleteDoc(doc(db, 'orders', orderId)).catch((err) => {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  });
+}
+
+// Global Cloud Sync Listener for Orders
+let isOrdersSyncInitialized = false;
+export function initOrdersSync(): () => void {
+  if (isOrdersSyncInitialized) return () => {};
+  isOrdersSyncInitialized = true;
+
+  const ordersCol = collection(db, 'orders');
+
+  const unsubscribe = onSnapshot(
+    ordersCol,
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const cloudOrders: Order[] = [];
+        snapshot.forEach((d) => {
+          cloudOrders.push(d.data() as Order);
+        });
+        cloudOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        saveStoredOrders(cloudOrders);
+      }
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'orders');
+    }
+  );
+
+  return unsubscribe;
 }
 
 // --- ADMIN AUTHENTICATION & ADVANCED SECURITY ---

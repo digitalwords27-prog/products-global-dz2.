@@ -102,6 +102,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [previewModalProduct, setPreviewModalProduct] = useState<Product | null>(null);
+  const [productFormError, setProductFormError] = useState<string>('');
 
   // Orders management states
   const [orders, setOrders] = useState<Order[]>([]);
@@ -258,8 +259,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   // Save Product (Create or Update)
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
+    setProductFormError('');
     if (!editingProduct || !editingProduct.name || !editingProduct.price) {
-      alert('Veuillez spécifier au moins un nom et un prix pour le produit.');
+      setProductFormError(language === 'ar' ? 'يرجى تحديد اسم وسعر صحيح للمنتج.' : 'Veuillez spécifier au moins un nom et un prix pour le produit.');
       return;
     }
 
@@ -289,17 +291,16 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     }
 
     setEditingProduct(null);
+    setProductFormError('');
     refreshData();
     onProductsUpdated();
   };
 
   // Delete Product
   const handleDeleteProduct = (id: string) => {
-    if (window.confirm(t.admin.confirmDelete)) {
-      deleteProduct(id);
-      refreshData();
-      onProductsUpdated();
-    }
+    deleteProduct(id);
+    refreshData();
+    onProductsUpdated();
   };
 
   // Update Order Status
@@ -310,10 +311,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   // Delete Order
   const handleDeleteOrder = (orderId: string) => {
-    if (window.confirm('Supprimer cette commande de l\'historique ?')) {
-      deleteOrder(orderId);
-      refreshData();
-    }
+    deleteOrder(orderId);
+    refreshData();
   };
 
   // Security Actions
@@ -357,12 +356,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   };
 
   const handleRevokeSessions = () => {
-    if (window.confirm(language === 'ar' ? 'هل أنت متأكد من تسجيل الخروج وإنهاء الجلسات المفتوحة على كافة الأجهزة؟' : 'Voulez-vous révoquer toutes les sessions et déconnecter tous les appareils ?')) {
-      revokeAllSessions();
-      setSecurityActionMsg({ success: true, text: t.admin.revokeSessionsSuccess });
-      setIsAuthenticated(false);
-      onSecurityUpdated?.();
-    }
+    revokeAllSessions();
+    setSecurityActionMsg({ success: true, text: t.admin.revokeSessionsSuccess });
+    setIsAuthenticated(false);
+    onSecurityUpdated?.();
   };
 
   const handleResetLockout = () => {
@@ -670,6 +667,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                           {t.admin.cancelBtn}
                         </button>
                       </div>
+
+                      {productFormError && (
+                        <div className="mb-4 p-3 rounded-xl bg-red-950/80 border border-red-500/80 text-red-200 text-xs flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                          <span>{productFormError}</span>
+                        </div>
+                      )}
 
                       <form onSubmit={handleSaveProduct} className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
