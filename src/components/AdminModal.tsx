@@ -30,7 +30,12 @@ import {
   ShieldAlert,
   KeyRound,
   AlertTriangle,
-  Fingerprint
+  Fingerprint,
+  Share2,
+  Copy,
+  Globe,
+  ExternalLink,
+  QrCode
 } from 'lucide-react';
 import { Product, Order, OrderStatus, CategoryId, Language, SecurityConfig } from '../types';
 import { 
@@ -58,6 +63,7 @@ import {
   importCatalogJson
 } from '../services/storage';
 import { TRANSLATIONS } from '../i18n/translations';
+import QRCode from 'qrcode';
 
 interface AdminModalProps {
   isOpen: boolean;
@@ -93,7 +99,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [securityActionMsg, setSecurityActionMsg] = useState<{ success?: boolean; text: string } | null>(null);
 
   // Active Admin Tab
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'security' | 'settings' | 'guide'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'security' | 'share' | 'settings' | 'guide'>('products');
 
   // Product management states
   const [products, setProducts] = useState<Product[]>([]);
@@ -108,10 +114,29 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [orders, setOrders] = useState<Order[]>([]);
   const [orderFilterStatus, setOrderFilterStatus] = useState<string>('all');
 
-  // Settings states
+  // Settings & Share states
   const [importStatusMsg, setImportStatusMsg] = useState<{ success?: boolean; text: string } | null>(null);
+  const [resetConfirmPending, setResetConfirmPending] = useState(false);
+  const [qrCodeAdminUrl, setQrCodeAdminUrl] = useState<string>('');
+  const [adminCopiedKey, setAdminCopiedKey] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const liveStoreUrl = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')
+    ? window.location.origin
+    : 'https://products-global-dz2.vercel.app';
+
+  useEffect(() => {
+    if (activeTab === 'share' && !qrCodeAdminUrl) {
+      QRCode.toDataURL(liveStoreUrl, {
+        width: 300,
+        margin: 2,
+        color: { dark: '#000000', light: '#FFFFFF' }
+      })
+      .then((url) => setQrCodeAdminUrl(url))
+      .catch((err) => console.error(err));
+    }
+  }, [activeTab, liveStoreUrl, qrCodeAdminUrl]);
 
   // Initialize and check auth & lockout
   useEffect(() => {
@@ -621,6 +646,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                   {isDefaultPin && (
                     <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping absolute -top-1 -right-1" />
                   )}
+                </button>
+
+                {/* Store Links & Bio Sharing Tab */}
+                <button
+                  onClick={() => { setActiveTab('share'); setEditingProduct(null); }}
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                    activeTab === 'share'
+                      ? 'bg-[#D4AF37] text-black shadow'
+                      : 'bg-[#18181C] text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>{language === 'ar' ? '🔗 روابط المتجر والبايو' : '🔗 Liens & Bio'}</span>
                 </button>
 
                 <button
@@ -1399,6 +1437,151 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 </div>
               )}
 
+              {/* TAB: STORE LINKS & SOCIAL BIO SHARING */}
+              {activeTab === 'share' && (
+                <div className="space-y-6 max-w-3xl font-sans-clean">
+                  <div className="p-5 rounded-2xl bg-[#16161A] border border-[#D4AF37]/30 space-y-2">
+                    <div className="flex items-center gap-2 text-[#D4AF37] font-serif-luxury text-base font-bold">
+                      <Share2 className="w-5 h-5" />
+                      <span>{language === 'ar' ? 'رابط متجرك وقوالب النشر في حساباتك' : 'Liens de la boutique & Réseaux sociaux'}</span>
+                    </div>
+                    <p className="text-xs text-zinc-400">
+                      {language === 'ar'
+                        ? 'هذا هو رابط متجرك الرسمي الذي يمكنك وضعه في بايو إنستغرام وتيك توك وصفحة فيسبوك وكتالوج واتساب لجلب الطلبات مباشرة.'
+                        : 'Utilisez ce lien officiel pour vos profils Instagram, TikTok, Facebook et WhatsApp Business.'}
+                    </p>
+                  </div>
+
+                  {/* Direct Link Box */}
+                  <div className="p-4 rounded-xl bg-[#141419] border border-zinc-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#F3E5AB] flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>{language === 'ar' ? 'الرابط المباشر للمتجر:' : 'Lien direct officiel :'}</span>
+                      </span>
+                      <span className="text-[11px] text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+                        ● {language === 'ar' ? 'شغال ومفعل' : 'Actif'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <div className="flex-1 bg-black/60 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-[#F3E5AB] select-all break-all">
+                        {liveStoreUrl}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          navigator.clipboard?.writeText(liveStoreUrl);
+                          setAdminCopiedKey('direct_link');
+                          setTimeout(() => setAdminCopiedKey(null), 2500);
+                        }}
+                        className={`px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shrink-0 ${
+                          adminCopiedKey === 'direct_link'
+                            ? 'bg-emerald-500 text-black'
+                            : 'bg-[#D4AF37] hover:bg-[#F3E5AB] text-black'
+                        }`}
+                      >
+                        {adminCopiedKey === 'direct_link' ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>{language === 'ar' ? 'تم النسخ!' : 'Copié !'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            <span>{language === 'ar' ? 'نسخ الرابط' : 'Copier'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Ready-to-use Bio for Instagram & TikTok */}
+                  <div className="p-4 rounded-xl bg-[#141419] border border-zinc-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#F3E5AB] flex items-center gap-1.5">
+                        <span>📸 {language === 'ar' ? 'نص احترافي جاهز للنسخ في بايو إنستغرام وتيك توك (Bio):' : 'Texte prêt pour Bio Instagram & TikTok :'}</span>
+                      </span>
+
+                      <button
+                        onClick={() => {
+                          const bioText = `✨ Products Global Dz 🇩🇿\n💎 أفخر العطور الأصلية | ساعات راقية | مستحضرات تجميل عالمية\n🚚 توصيل سريع لجميع الولايات والدفع عند الاستلام\n👇 تسوق واطلب مباشرة من متجرنا:\n${liveStoreUrl}`;
+                          navigator.clipboard?.writeText(bioText);
+                          setAdminCopiedKey('bio_text');
+                          setTimeout(() => setAdminCopiedKey(null), 2500);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                          adminCopiedKey === 'bio_text'
+                            ? 'bg-emerald-500 text-black'
+                            : 'bg-[#D4AF37]/20 text-[#F3E5AB] hover:bg-[#D4AF37] hover:text-black'
+                        }`}
+                      >
+                        {adminCopiedKey === 'bio_text' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{adminCopiedKey === 'bio_text' ? (language === 'ar' ? 'تم نسخ النص!' : 'Copié !') : (language === 'ar' ? 'نسخ نص البايو' : 'Copier le texte')}</span>
+                      </button>
+                    </div>
+
+                    <pre className="text-xs font-sans text-zinc-300 bg-black/50 p-3 rounded-lg whitespace-pre-wrap border border-zinc-800 leading-relaxed font-arabic-cairo">
+                      {`✨ Products Global Dz 🇩🇿\n💎 أفخر العطور الأصلية | ساعات راقية | مستحضرات تجميل عالمية\n🚚 توصيل سريع لجميع الولايات والدفع عند الاستلام\n👇 تسوق واطلب مباشرة من متجرنا:\n${liveStoreUrl}`}
+                    </pre>
+                  </div>
+
+                  {/* QR Code section */}
+                  <div className="p-4 rounded-xl bg-[#141419] border border-zinc-800 flex flex-col sm:flex-row items-center gap-4">
+                    {qrCodeAdminUrl ? (
+                      <div className="p-2 bg-white rounded-xl shadow-lg shrink-0">
+                        <img src={qrCodeAdminUrl} alt="QR Code" className="w-32 h-32 object-contain" />
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 bg-zinc-800 rounded-xl flex items-center justify-center shrink-0">
+                        <QrCode className="w-8 h-8 text-zinc-600 animate-pulse" />
+                      </div>
+                    )}
+
+                    <div className="space-y-2 text-center sm:text-left rtl:sm:text-right">
+                      <h4 className="text-xs font-bold text-[#F3E5AB] flex items-center justify-center sm:justify-start gap-1.5">
+                        <QrCode className="w-4 h-4 text-[#D4AF37]" />
+                        <span>{language === 'ar' ? 'رمز QR Code لطباعة الكروت والملصقات' : 'Code QR pour impression'}</span>
+                      </h4>
+                      <p className="text-xs text-zinc-400">
+                        {language === 'ar'
+                          ? 'يمكنك تنزيل صورة الرمز وطباعتها على بطاقات العمل وملصقات علب التوصيل ليقوم الزبائن بمسحها بالهاتف مباشرة.'
+                          : 'Téléchargez ce code QR pour vos cartes de visite et autocollants de colis.'}
+                      </p>
+                      {qrCodeAdminUrl && (
+                        <a
+                          href={qrCodeAdminUrl}
+                          download="products-global-dz-qr.png"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-[#D4AF37] text-zinc-200 hover:text-black text-xs font-semibold transition"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>{language === 'ar' ? 'تحميل الرمز (PNG)' : 'Télécharger (PNG)'}</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Step by step guide */}
+                  <div className="p-4 rounded-xl bg-[#111115] border border-zinc-800/80 space-y-2.5 text-xs text-zinc-300">
+                    <h5 className="font-bold text-[#D4AF37]">
+                      💡 {language === 'ar' ? 'كيف تضع الرابط في صفحاتك ؟' : 'Comment ajouter le lien à vos réseaux ?'}
+                    </h5>
+                    <ul className="list-disc list-inside space-y-1.5 text-zinc-400 text-[11px] leading-relaxed">
+                      <li>
+                        <strong className="text-zinc-200">إنستغرام (Instagram) :</strong> ادخل لحسابك ➔ اضغط "Edit profile" (تعديل الملف) ➔ اختر "Links" (الروابط) ➔ اضغط "Add external link" ➔ ألصق الرابط.
+                      </li>
+                      <li>
+                        <strong className="text-zinc-200">صفحة فيسبوك (Facebook) :</strong> ادخل لصفحتك كمدير ➔ اضغط "تعديل زر الإجراء" ➔ اختر زر "تسوق الآن" أو "استخدام التطبيق" ➔ ألصق الرابط ليظهر زر الشراء مباشرة في أعلى صفحتك.
+                      </li>
+                      <li>
+                        <strong className="text-zinc-200">تيك توك (TikTok) :</strong> حول حسابك إلى حساب أعمال (Business Account مجاني في ثوانٍ) ➔ اضغط تعديل الملف ➔ خانة "موقع الويب" ➔ ألصق الرابط.
+                      </li>
+                    </ul>
+                  </div>
+
+                </div>
+              )}
+
               {/* TAB 4: SETTINGS & BACKUP */}
               {activeTab === 'settings' && (
                 <div className="space-y-6 max-w-2xl">
@@ -1441,19 +1624,39 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                         />
                       </label>
 
-                      <button
-                        onClick={() => {
-                          if (window.confirm('Voulez-vous réinitialiser le catalogue avec les produits d\'origine de la marque ?')) {
-                            resetProducts();
-                            refreshData();
-                            onProductsUpdated();
-                          }
-                        }}
-                        className="px-4 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Restaurer Catalogue d'Origine</span>
-                      </button>
+                      {resetConfirmPending ? (
+                        <div className="flex items-center gap-2 animate-fade-in">
+                          <button
+                            onClick={() => {
+                              resetProducts();
+                              refreshData();
+                              onProductsUpdated();
+                              setResetConfirmPending(false);
+                              setImportStatusMsg({ 
+                                success: true, 
+                                text: language === 'ar' ? 'تمت استعادة كتالوج المنتجات الأصلي بنجاح.' : 'Catalogue d\'origine restauré avec succès.' 
+                              });
+                            }}
+                            className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            {language === 'ar' ? 'تأكيد الاستعادة' : 'Confirmer la réinitialisation'}
+                          </button>
+                          <button
+                            onClick={() => setResetConfirmPending(false)}
+                            className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-semibold hover:bg-zinc-700 transition cursor-pointer"
+                          >
+                            {language === 'ar' ? 'إلغاء' : 'Annuler'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setResetConfirmPending(true)}
+                          className="px-4 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Restaurer Catalogue d'Origine</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 

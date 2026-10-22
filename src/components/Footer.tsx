@@ -9,7 +9,8 @@ import {
   ShieldCheck, 
   Truck,
   Heart,
-  Crown
+  Crown,
+  Share2
 } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS, generateWhatsAppLink } from '../i18n/translations';
@@ -19,6 +20,7 @@ interface FooterProps {
   onOpenAdmin: () => void;
   onScrollToSection: (sectionId: string) => void;
   onNavigateCategory: (catId: string) => void;
+  onOpenShare?: () => void;
   stealthMode?: boolean;
   isAdminLoggedIn?: boolean;
 }
@@ -28,6 +30,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenAdmin,
   onScrollToSection,
   onNavigateCategory,
+  onOpenShare,
   stealthMode = false,
   isAdminLoggedIn = false,
 }) => {
@@ -170,6 +173,19 @@ export const Footer: React.FC<FooterProps> = ({
                 <span>{language === 'ar' ? 'الجزائر — تغطية وطنية تشمل الـ 69 ولاية' : 'Algérie — Couverture nationale 69 Wilayas'}</span>
               </div>
             </div>
+
+            {/* Quick Share Link Button in Footer */}
+            {onOpenShare && (
+              <div className="pt-2">
+                <button
+                  onClick={onOpenShare}
+                  className="inline-flex items-center gap-1.5 text-xs text-[#D4AF37] hover:text-[#F3E5AB] transition-colors bg-[#17171C] hover:bg-[#1E1E24] px-3.5 py-2 rounded-xl border border-[#D4AF37]/40 cursor-pointer shadow-md"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <span>{language === 'ar' ? '🔗 مشاركة رابط المتجر والبايو' : '🔗 Partager le lien de la boutique'}</span>
+                </button>
+              </div>
+            )}
 
             {/* Admin Access Discreet Link (Shown ONLY when already logged in as Admin) */}
             {isAdminLoggedIn && (

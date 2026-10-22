@@ -3,7 +3,8 @@ import {
   Crown, 
   LogOut, 
   Settings, 
-  Sparkles 
+  Sparkles,
+  Share2
 } from 'lucide-react';
 import { Language, CategoryId, Product, CartItem, SecurityConfig } from './types';
 import { 
@@ -29,6 +30,7 @@ import { QuickEditProductModal } from './components/QuickEditProductModal';
 import { SiteLockScreen } from './components/SiteLockScreen';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { Footer } from './components/Footer';
+import { ShareModal } from './components/ShareModal';
 
 const CART_STORAGE_KEY = 'products_global_dz_cart_v1';
 
@@ -62,6 +64,7 @@ export default function App() {
   // Modal and Drawer States
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
 
   // Admin Session & Quick Edit States
@@ -226,6 +229,7 @@ export default function App() {
         cartCount={cartTotalCount}
         onOpenCart={() => setIsCartOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenShare={() => setIsShareOpen(true)}
         onNavigateCategory={handleNavigateCategory}
         onScrollToSection={scrollToSection}
         stealthMode={securityConfig.stealthMode}
@@ -286,6 +290,7 @@ export default function App() {
       <Footer
         language={language}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenShare={() => setIsShareOpen(true)}
         onScrollToSection={scrollToSection}
         onNavigateCategory={handleNavigateCategory}
         stealthMode={securityConfig.stealthMode}
@@ -314,6 +319,13 @@ export default function App() {
         onRemoveItem={handleRemoveFromCart}
         onClearCart={handleClearCart}
         onProceedToOrderForm={() => scrollToSection('order-form')}
+      />
+
+      {/* Share Store Modal for Instagram, TikTok & Facebook */}
+      <ShareModal
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
+        language={language}
       />
 
       {/* Admin Dashboard Modal (Protected Product & Order Management) */}
@@ -369,6 +381,14 @@ export default function App() {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setIsShareOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-[#1D1D23] border border-[#D4AF37]/50 text-[#F3E5AB] text-xs font-semibold hover:bg-[#D4AF37] hover:text-black transition flex items-center gap-1 cursor-pointer"
+              title={language === 'ar' ? 'رابط المتجر ونشره في البايو' : 'Partager le lien'}
+            >
+              <Share2 className="w-3.5 h-3.5 text-[#D4AF37]" />
+              <span className="hidden sm:inline">{language === 'ar' ? 'رابط المتجر' : 'Lien'}</span>
+            </button>
+            <button
               onClick={() => setIsAdminOpen(true)}
               className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black text-xs font-bold hover:brightness-110 transition shadow flex items-center gap-1 cursor-pointer"
             >
@@ -396,7 +416,6 @@ export default function App() {
           onOpenAdminDirect={() => setIsAdminOpen(true)}
         />
       )}
-
 
     </div>
   );

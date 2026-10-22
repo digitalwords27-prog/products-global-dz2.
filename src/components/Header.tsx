@@ -5,11 +5,12 @@ import {
   X, 
   ShieldCheck, 
   Phone, 
-  Sparkles,
-  Lock,
-  Globe,
-  Check,
-  Crown
+  Sparkles, 
+  Lock, 
+  Globe, 
+  Check, 
+  Crown,
+  Share2
 } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../i18n/translations';
@@ -22,6 +23,7 @@ interface HeaderProps {
   onOpenAdmin: () => void;
   onNavigateCategory: (catId: string) => void;
   onScrollToSection: (sectionId: string) => void;
+  onOpenShare?: () => void;
   stealthMode?: boolean;
   isAdminLoggedIn?: boolean;
 }
@@ -34,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
   onNavigateCategory,
   onScrollToSection,
+  onOpenShare,
   stealthMode = false,
   isAdminLoggedIn = false,
 }) => {
@@ -233,6 +236,18 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{t.nav.orderNow}</span>
             </button>
 
+            {/* Quick Share Store Link Button */}
+            {onOpenShare && (
+              <button
+                onClick={onOpenShare}
+                title={language === 'ar' ? 'مشاركة رابط المتجر' : 'Partager la boutique'}
+                aria-label="Partager la boutique"
+                className="p-2.5 sm:p-3 rounded-full bg-[#17171A] border border-[#D4AF37]/40 text-[#D4AF37] hover:text-black hover:bg-[#D4AF37] hover:scale-105 transition-all shadow-md cursor-pointer flex items-center justify-center"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
+            )}
+
             {/* Shopping Cart Icon with Badge */}
             <button
               onClick={onOpenCart}
@@ -358,6 +373,15 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="pt-2 flex flex-col gap-2">
+            {onOpenShare && (
+              <button
+                onClick={() => { setMobileMenuOpen(false); onOpenShare(); }}
+                className="w-full py-2.5 rounded-xl bg-[#17171C] border border-[#D4AF37]/50 text-[#F3E5AB] hover:bg-[#D4AF37] hover:text-black font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all"
+              >
+                <Share2 className="w-4 h-4 text-[#D4AF37]" />
+                <span>{language === 'ar' ? '🔗 مشاركة رابط المتجر والبايو' : '🔗 Partager le lien de la boutique'}</span>
+              </button>
+            )}
             <button
               onClick={() => handleNavClick('order-form')}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black font-bold text-sm text-center uppercase tracking-wide cursor-pointer"
