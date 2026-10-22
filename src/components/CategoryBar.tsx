@@ -49,7 +49,7 @@ const CATEGORIES: CategoryMeta[] = [
   {
     id: 'watches-women',
     key: 'watchesWomen',
-    image: 'https://images.unsplash.com/photo-1508615039623-a25605d2b022?auto=format&fit=crop&w=400&q=80',
+    image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPkSfdkKPwx9Mc4qQQR6GqrkoJkpdmNuc4-HMwof0EkA&s=10',
   },
 ];
 
