@@ -29,7 +29,7 @@ const CATEGORIES: CategoryMeta[] = [
   {
     id: 'skincare',
     key: 'skincare',
-    image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=400&q=80',
+    image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTtXDxCHoM1jMFmkuHKzdqnapIrz-wvHaJjtAM2ndMxiA&s=10',
   },
   {
     id: 'beauty-accessories',
@@ -39,7 +39,7 @@ const CATEGORIES: CategoryMeta[] = [
   {
     id: 'fashion-accessories',
     key: 'fashionAccessories',
-    image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?auto=format&fit=crop&w=400&q=80',
+    image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS2s0qAmnDXBj8WYVkZTt0CICbvUiBsNwxvPPAx1KS8TA&s=10',
   },
   {
     id: 'watches-men',
