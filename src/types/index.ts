@@ -76,3 +76,15 @@ export interface Wilaya {
   homeDeliveryFee: number;
   deliveryTimeDays: string;
 }
+
+export interface SecurityConfig {
+  stealthMode: boolean; // hide admin button from public header/footer
+  siteLockEnabled: boolean; // lock entire site behind master password
+  rememberDevice: boolean; // keep session active on trusted device
+}
+
+export interface AuthAttemptState {
+  failedAttempts: number;
+  lockoutUntil: number | null;
+}
+

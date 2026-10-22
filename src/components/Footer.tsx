@@ -18,6 +18,7 @@ interface FooterProps {
   onOpenAdmin: () => void;
   onScrollToSection: (sectionId: string) => void;
   onNavigateCategory: (catId: string) => void;
+  stealthMode?: boolean;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -25,6 +26,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenAdmin,
   onScrollToSection,
   onNavigateCategory,
+  stealthMode = false,
 }) => {
   const t = TRANSLATIONS[language];
   const whatsappUrl = generateWhatsAppLink({ language });
@@ -166,16 +168,19 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
             </div>
 
-            {/* Admin Access Discreet Link */}
-            <div className="pt-2">
-              <button
-                onClick={onOpenAdmin}
-                className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-[#D4AF37] transition-colors bg-[#121215] px-3 py-1.5 rounded-lg border border-zinc-800"
-              >
-                <Lock className="w-3 h-3" />
-                <span>{t.footer.adminAccess}</span>
-              </button>
-            </div>
+            {/* Admin Access Discreet Link (Hidden in Stealth Mode) */}
+            {!stealthMode && (
+              <div className="pt-2">
+                <button
+                  onClick={onOpenAdmin}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-[#D4AF37] transition-colors bg-[#121215] px-3 py-1.5 rounded-lg border border-zinc-800 cursor-pointer"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>{t.footer.adminAccess}</span>
+                </button>
+              </div>
+            )}
+
           </div>
 
         </div>

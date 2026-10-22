@@ -21,6 +21,7 @@ interface HeaderProps {
   onOpenAdmin: () => void;
   onNavigateCategory: (catId: string) => void;
   onScrollToSection: (sectionId: string) => void;
+  stealthMode?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,14 +32,37 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
   onNavigateCategory,
   onScrollToSection,
+  stealthMode = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const logoClickRef = React.useRef<{ count: number; timer: any }>({ count: 0, timer: null });
   const t = TRANSLATIONS[language];
 
   const handleNavClick = (sectionId: string) => {
     onScrollToSection(sectionId);
     setMobileMenuOpen(false);
   };
+
+  const handleLogoClick = () => {
+    // Secret 3-tap gesture to open Admin even if stealth mode is active!
+    logoClickRef.current.count += 1;
+    if (logoClickRef.current.timer) {
+      clearTimeout(logoClickRef.current.timer);
+    }
+
+    if (logoClickRef.current.count >= 3) {
+      logoClickRef.current.count = 0;
+      onOpenAdmin();
+      return;
+    }
+
+    logoClickRef.current.timer = setTimeout(() => {
+      logoClickRef.current.count = 0;
+    }, 1200);
+
+    handleNavClick('hero');
+  };
+
 
   const handleCategoryClick = (catId: string) => {
     onNavigateCategory(catId);
@@ -114,8 +138,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Official Brand Logo */}
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => handleNavClick('hero')} 
-              className="text-left rtl:text-right flex items-center gap-3 group focus:outline-none"
+              onClick={handleLogoClick} 
+              title="Products Global Dz (3 clics pour l'accès gérant)"
+              className="text-left rtl:text-right flex items-center gap-3 group focus:outline-none cursor-pointer select-none"
             >
               <div className="relative w-13 h-13 sm:w-16 sm:h-16 rounded-full p-0.5 bg-gradient-to-tr from-[#D4AF37] via-[#F3E5AB] to-[#8C6D1F] shadow-lg shadow-[#D4AF37]/20 flex items-center justify-center group-hover:scale-105 group-hover:shadow-[#D4AF37]/40 transition-all duration-300 shrink-0">
                 <img
@@ -219,14 +244,16 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Admin Portal Toggle */}
-            <button
-              onClick={onOpenAdmin}
-              title={t.admin.title}
-              className="p-2.5 sm:p-3 rounded-full bg-[#17171A] border border-zinc-800 text-zinc-400 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 transition-colors"
-            >
-              <Lock className="w-4 h-4" />
-            </button>
+            {/* Admin Portal Toggle (Hidden in Stealth Mode for maximum security) */}
+            {!stealthMode && (
+              <button
+                onClick={onOpenAdmin}
+                title={t.admin.title}
+                className="p-2.5 sm:p-3 rounded-full bg-[#17171A] border border-zinc-800 text-zinc-400 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 transition-colors"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Mobile Menu Toggle */}
             <button
@@ -329,18 +356,21 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="pt-2 flex flex-col gap-2">
             <button
               onClick={() => handleNavClick('order-form')}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black font-bold text-sm text-center uppercase tracking-wide"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black font-bold text-sm text-center uppercase tracking-wide cursor-pointer"
             >
               {t.nav.orderNow}
             </button>
-            <button
-              onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }}
-              className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs flex items-center justify-center gap-1.5"
-            >
-              <Lock className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>{t.admin.title}</span>
-            </button>
+            {!stealthMode && (
+              <button
+                onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }}
+                className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span>{t.admin.title}</span>
+              </button>
+            )}
           </div>
+
         </div>
       )}
     </header>

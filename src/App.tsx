@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Language, CategoryId, Product, CartItem } from './types';
-import { getStoredProducts } from './services/storage';
+import { Language, CategoryId, Product, CartItem, SecurityConfig } from './types';
+import { getStoredProducts, getSecurityConfig, isSiteUnlocked } from './services/storage';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { CategoryBar } from './components/CategoryBar';
@@ -11,6 +11,7 @@ import { WhatsAppVIPSection } from './components/WhatsAppVIPSection';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { CartDrawer } from './components/CartDrawer';
 import { AdminModal } from './components/AdminModal';
+import { SiteLockScreen } from './components/SiteLockScreen';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { Footer } from './components/Footer';
 
@@ -22,6 +23,10 @@ export default function App() {
     const saved = localStorage.getItem('products_global_dz_lang');
     return (saved === 'ar' || saved === 'en' || saved === 'fr') ? saved : 'fr';
   });
+
+  // Security and Lock States
+  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(() => getSecurityConfig());
+  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(() => isSiteUnlocked());
 
   // Category Filter
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('all');
@@ -46,6 +51,7 @@ export default function App() {
 
   // Direct order item handoff from product detail to order form
   const [directFormItem, setDirectFormItem] = useState<{ product: Product; quantity: number } | null>(null);
+
 
   // Handle Language changes and update HTML dir/lang attributes
   const handleLanguageChange = (lang: Language) => {
@@ -83,6 +89,41 @@ export default function App() {
     window.addEventListener('products_updated', handleUpdate);
     return () => window.removeEventListener('products_updated', handleUpdate);
   }, [syncProducts]);
+
+  // Sync Security Config and Site Lock State
+  useEffect(() => {
+    const handleSecurityUpdate = () => {
+      setSecurityConfig(getSecurityConfig());
+      setSiteUnlocked(isSiteUnlocked());
+    };
+    window.addEventListener('security_updated', handleSecurityUpdate);
+    return () => window.removeEventListener('security_updated', handleSecurityUpdate);
+  }, []);
+
+  // Listen to URL hash (#admin or ?admin=true) for discreet admin access
+  useEffect(() => {
+    const checkAdminHash = () => {
+      if (window.location.hash === '#admin' || window.location.search.includes('admin=true')) {
+        setIsAdminOpen(true);
+      }
+    };
+    checkAdminHash();
+    window.addEventListener('hashchange', checkAdminHash);
+    return () => window.removeEventListener('hashchange', checkAdminHash);
+  }, []);
+
+  // Keyboard shortcut (Ctrl + Shift + A) to toggle Admin modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        setIsAdminOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
 
   // Smooth scroll helper
   const scrollToSection = (sectionId: string) => {
@@ -152,6 +193,7 @@ export default function App() {
         onOpenAdmin={() => setIsAdminOpen(true)}
         onNavigateCategory={handleNavigateCategory}
         onScrollToSection={scrollToSection}
+        stealthMode={securityConfig.stealthMode}
       />
 
       {/* Main Content Area */}
@@ -188,7 +230,7 @@ export default function App() {
         {/* 7. Why Choose Us Section */}
         <WhyChooseUs language={language} />
 
-        {/* 8. Customer Order Form Section (Method B - 58 Wilayas & COD) */}
+        {/* 8. Customer Order Form Section (Method B - 69 Wilayas & COD) */}
         <OrderFormSection
           products={products}
           cartItems={cartItems}
@@ -208,6 +250,7 @@ export default function App() {
         onOpenAdmin={() => setIsAdminOpen(true)}
         onScrollToSection={scrollToSection}
         onNavigateCategory={handleNavigateCategory}
+        stealthMode={securityConfig.stealthMode}
       />
 
       {/* Floating WhatsApp Action Button */}
@@ -240,7 +283,22 @@ export default function App() {
         onClose={() => setIsAdminOpen(false)}
         language={language}
         onProductsUpdated={syncProducts}
+        onSecurityUpdated={() => {
+          setSecurityConfig(getSecurityConfig());
+          setSiteUnlocked(isSiteUnlocked());
+        }}
       />
+
+      {/* Private Site Lock Screen (Active when Site-Wide Lock is enabled) */}
+      {securityConfig.siteLockEnabled && !siteUnlocked && (
+        <SiteLockScreen
+          language={language}
+          onLanguageChange={handleLanguageChange}
+          onUnlockSuccess={() => setSiteUnlocked(true)}
+          onOpenAdminDirect={() => setIsAdminOpen(true)}
+        />
+      )}
+
 
     </div>
   );

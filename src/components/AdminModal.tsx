@@ -19,14 +19,20 @@ import {
   Download, 
   RefreshCw, 
   Eye, 
+  EyeOff,
   DollarSign, 
   Star, 
   Clock, 
   Flame,
   HelpCircle,
-  Smartphone
+  Smartphone,
+  ShieldCheck,
+  ShieldAlert,
+  KeyRound,
+  AlertTriangle,
+  Fingerprint
 } from 'lucide-react';
-import { Product, Order, OrderStatus, CategoryId, Language } from '../types';
+import { Product, Order, OrderStatus, CategoryId, Language, SecurityConfig } from '../types';
 import { 
   getStoredProducts, 
   saveStoredProducts, 
@@ -39,7 +45,13 @@ import {
   deleteOrder, 
   getAdminPin, 
   setAdminPin, 
-  verifyAdminPin, 
+  verifyAdminPinWithProtection,
+  getRemainingLockoutSeconds,
+  resetAuthAttempts,
+  getSecurityConfig,
+  saveSecurityConfig,
+  revokeAllSessions,
+  isDefaultPinInUse,
   isAdminAuthenticated, 
   logoutAdmin,
   exportCatalogJson,
@@ -52,6 +64,7 @@ interface AdminModalProps {
   onClose: () => void;
   language: Language;
   onProductsUpdated: () => void;
+  onSecurityUpdated?: () => void;
 }
 
 export const AdminModal: React.FC<AdminModalProps> = ({
@@ -59,6 +72,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   onClose,
   language,
   onProductsUpdated,
+  onSecurityUpdated,
 }) => {
   const t = TRANSLATIONS[language];
 
@@ -66,9 +80,20 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
+  const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+  const [isDefaultPin, setIsDefaultPin] = useState(false);
+
+  // Security configuration states
+  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(() => getSecurityConfig());
+  const [newMasterPassword, setNewMasterPassword] = useState('');
+  const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
+  const [securityActionMsg, setSecurityActionMsg] = useState<{ success?: boolean; text: string } | null>(null);
 
   // Active Admin Tab
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'settings' | 'guide'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'security' | 'settings' | 'guide'>('products');
 
   // Product management states
   const [products, setProducts] = useState<Product[]>([]);
@@ -83,40 +108,87 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [orderFilterStatus, setOrderFilterStatus] = useState<string>('all');
 
   // Settings states
-  const [newPin, setNewPin] = useState('');
-  const [pinChangeMsg, setPinChangeMsg] = useState('');
   const [importStatusMsg, setImportStatusMsg] = useState<{ success?: boolean; text: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize and check auth
+  // Initialize and check auth & lockout
   useEffect(() => {
     if (isOpen) {
       const auth = isAdminAuthenticated();
       setIsAuthenticated(auth);
+      setIsDefaultPin(isDefaultPinInUse());
+      setSecurityConfig(getSecurityConfig());
+
+      const remainingLock = getRemainingLockoutSeconds();
+      setLockoutRemaining(remainingLock);
+      if (remainingLock > 0) {
+        setPinError(
+          language === 'ar'
+            ? `⚠️ تم تجميد الدخول لأسباب أمنية. يرجى الانتظار ${remainingLock} ثانية.`
+            : `Accès temporairement bloqué par sécurité. Veuillez patienter ${remainingLock} secondes.`
+        );
+      }
+
       if (auth) {
         refreshData();
       }
     }
-  }, [isOpen]);
+  }, [isOpen, language]);
+
+  // Lockout countdown timer
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutRemaining((prev) => {
+        if (prev <= 1) {
+          setPinError('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutRemaining]);
 
   const refreshData = () => {
     setProducts(getStoredProducts());
     setOrders(getStoredOrders());
+    setIsDefaultPin(isDefaultPinInUse());
+    setSecurityConfig(getSecurityConfig());
   };
 
   if (!isOpen) return null;
 
-  // Handle PIN Login
+  // Handle Protected Login
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutRemaining > 0) return;
     setPinError('');
-    if (verifyAdminPin(pinInput)) {
+
+    const res = verifyAdminPinWithProtection(pinInput, rememberDevice);
+    if (res.success) {
       setIsAuthenticated(true);
       setPinInput('');
+      setIsDefaultPin(isDefaultPinInUse());
       refreshData();
+      onSecurityUpdated?.();
     } else {
-      setPinError(t.admin.invalidPin);
+      if (res.locked) {
+        setLockoutRemaining(res.remainingSeconds || 300);
+        setPinError(
+          language === 'ar'
+            ? `⚠️ تم تجاوز الحد الأقصى للمحاولات! تم تجميد الدخول لمدة 5 دقائق لحماية المتجر من أي محاولة اختراق.`
+            : `⚠️ Trop de tentatives erronées ! Accès bloqué pendant 5 minutes par mesure de sécurité.`
+        );
+      } else {
+        setAttemptsRemaining(res.attemptsLeft ?? 0);
+        setPinError(
+          language === 'ar'
+            ? `الرمز السري غير صحيح. لديك ${res.attemptsLeft} محاولة متبقية قبل الإغلاق الأمني.`
+            : `Code secret incorrect. Il vous reste ${res.attemptsLeft} tentative(s) avant verrouillage temporaire.`
+        );
+      }
     }
   };
 
@@ -124,7 +196,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     logoutAdmin();
     setIsAuthenticated(false);
     setPinInput('');
+    setAttemptsRemaining(null);
   };
+
 
   // Image Upload handler (from phone gallery or computer)
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -242,18 +316,65 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     }
   };
 
-  // Update Admin PIN
-  const handleUpdatePin = (e: React.FormEvent) => {
+  // Security Actions
+  const handleSaveMasterPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    setPinChangeMsg('');
-    if (newPin.trim().length >= 4) {
-      setAdminPin(newPin.trim());
-      setPinChangeMsg(t.admin.pinUpdatedSuccess);
-      setNewPin('');
-    } else {
-      setPinChangeMsg('Le code PIN doit comporter au moins 4 chiffres.');
+    setSecurityActionMsg(null);
+    const trimmed = newMasterPassword.trim();
+    if (!trimmed || trimmed.length < 4) {
+      setSecurityActionMsg({ 
+        success: false, 
+        text: language === 'ar' ? 'كلمة المرور يجب أن تتكون من 4 خانات على الأقل.' : 'Le mot de passe doit comporter au moins 4 caractères.' 
+      });
+      return;
+    }
+    if (newMasterPassword !== confirmMasterPassword) {
+      setSecurityActionMsg({ 
+        success: false, 
+        text: language === 'ar' ? 'كلمتا المرور غير متطابقتين. يرجى إعادة التأكد.' : 'Les deux mots de passe ne correspondent pas.' 
+      });
+      return;
+    }
+
+    setAdminPin(trimmed);
+    setIsDefaultPin(false);
+    setNewMasterPassword('');
+    setConfirmMasterPassword('');
+    setSecurityActionMsg({ success: true, text: t.admin.pinUpdatedSuccess });
+    onSecurityUpdated?.();
+  };
+
+  const handleToggleStealthMode = () => {
+    const updated = saveSecurityConfig({ stealthMode: !securityConfig.stealthMode });
+    setSecurityConfig(updated);
+    onSecurityUpdated?.();
+  };
+
+  const handleToggleSiteLock = () => {
+    const updated = saveSecurityConfig({ siteLockEnabled: !securityConfig.siteLockEnabled });
+    setSecurityConfig(updated);
+    onSecurityUpdated?.();
+  };
+
+  const handleRevokeSessions = () => {
+    if (window.confirm(language === 'ar' ? 'هل أنت متأكد من تسجيل الخروج وإنهاء الجلسات المفتوحة على كافة الأجهزة؟' : 'Voulez-vous révoquer toutes les sessions et déconnecter tous les appareils ?')) {
+      revokeAllSessions();
+      setSecurityActionMsg({ success: true, text: t.admin.revokeSessionsSuccess });
+      setIsAuthenticated(false);
+      onSecurityUpdated?.();
     }
   };
+
+  const handleResetLockout = () => {
+    resetAuthAttempts();
+    setLockoutRemaining(0);
+    setPinError('');
+    setSecurityActionMsg({ 
+      success: true, 
+      text: language === 'ar' ? 'تمت إعادة ضبط عداد المحاولات وفك أي تجميد أمني بنجاح.' : 'Compteur de tentatives réinitialisé avec succès.' 
+    });
+  };
+
 
   // Export JSON Catalog
   const handleExportJson = () => {
@@ -355,60 +476,119 @@ export const AdminModal: React.FC<AdminModalProps> = ({
           
           {/* LOGIN SCREEN IF NOT AUTHENTICATED */}
           {!isAuthenticated ? (
-            <div className="max-w-sm mx-auto my-12 text-center">
-              <div className="w-20 h-20 rounded-full p-0.5 bg-gradient-to-tr from-[#D4AF37] via-[#F3E5AB] to-[#8C6D1F] shadow-xl shadow-[#D4AF37]/20 flex items-center justify-center mx-auto mb-4">
+            <div className="max-w-md mx-auto my-8 text-center px-2">
+              <div className="relative w-20 h-20 rounded-full p-0.5 bg-gradient-to-tr from-[#D4AF37] via-[#F3E5AB] to-[#8C6D1F] shadow-xl shadow-[#D4AF37]/25 flex items-center justify-center mx-auto mb-4">
                 <img
                   src="/logo.png"
                   alt="Products Global Dz Logo"
                   className="w-full h-full object-cover rounded-full bg-black"
                 />
+                <div className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-black border border-[#D4AF37] text-[#D4AF37] shadow">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
               </div>
-              <h3 className="font-serif-luxury text-xl font-bold text-white mb-2">
-                Accès Administrateur Sécurisé
+
+              <h3 className="font-serif-luxury text-xl sm:text-2xl font-bold text-white mb-2 gold-gradient-text">
+                {language === 'ar' ? 'بوابة الإدارة والأمان الفائق' : 'Accès Administrateur Sécurisé'}
               </h3>
-              <p className="text-xs text-zinc-400 mb-6 font-sans-clean">
-                Veuillez entrer votre code PIN personnel pour gérer vos produits, prix et commandes.
+              <p className="text-xs text-zinc-400 mb-6 font-sans-clean leading-relaxed">
+                {language === 'ar'
+                  ? 'هذه المنطقة مخصصة حصرياً لمدير المتجر. يرجى إدخال كلمة المرور الرئيسية للدخول.'
+                  : 'Cet espace est strictement réservé au propriétaire de la boutique. Veuillez entrer votre mot de passe maître.'}
               </p>
 
+              {/* Error or Lockout Notification */}
               {pinError && (
-                <div className="p-3 mb-4 rounded-lg bg-red-950/70 border border-red-700 text-xs text-red-200">
-                  {pinError}
+                <div className="p-3 mb-4 rounded-xl bg-red-950/70 border border-red-700 text-xs text-red-200 flex items-start gap-2 text-left rtl:text-right">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                  <span className="flex-1 leading-snug">{pinError}</span>
                 </div>
               )}
 
-              <form onSubmit={handleLogin} className="space-y-4">
-                <input
-                  type="password"
-                  autoFocus
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder={t.admin.pinPlaceholder}
-                  className="w-full bg-[#18181C] border border-zinc-700 focus:border-[#D4AF37] rounded-xl px-4 py-3 text-center text-lg tracking-widest text-white placeholder-zinc-500 focus:outline-none"
-                />
+              <form onSubmit={handleLogin} className="space-y-4 text-left rtl:text-right">
+                <div className="relative">
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    autoFocus
+                    disabled={lockoutRemaining > 0}
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value)}
+                    placeholder={language === 'ar' ? 'أدخل كلمة المرور أو الرمز السري...' : 'Entrez le mot de passe maître...'}
+                    className="w-full bg-[#18181C] border border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl px-4 py-3.5 pe-12 text-center text-base sm:text-lg tracking-widest text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 transition-all font-mono disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="absolute top-1/2 -translate-y-1/2 end-3 text-zinc-400 hover:text-white p-1"
+                  >
+                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Remember device checkbox */}
+                <div className="flex items-center gap-2 px-1 text-xs text-zinc-400">
+                  <input
+                    type="checkbox"
+                    id="rememberDeviceCheck"
+                    checked={rememberDevice}
+                    onChange={(e) => setRememberDevice(e.target.checked)}
+                    className="rounded bg-[#18181C] border-zinc-700 text-[#D4AF37] focus:ring-[#D4AF37]"
+                  />
+                  <label htmlFor="rememberDeviceCheck" className="cursor-pointer select-none">
+                    {t.admin.rememberDeviceLabel}
+                  </label>
+                </div>
+
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black font-bold text-sm uppercase tracking-wider hover:from-[#F3E5AB] transition-all shadow-lg"
+                  disabled={lockoutRemaining > 0 || !pinInput.trim()}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black font-bold text-sm uppercase tracking-wider hover:from-[#F3E5AB] transition-all shadow-lg shadow-[#D4AF37]/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {t.admin.btnLogin}
+                  <KeyRound className="w-4 h-4" />
+                  <span>
+                    {lockoutRemaining > 0 
+                      ? (language === 'ar' ? `تجميد أمني مؤقت (${lockoutRemaining} ثانية)` : `Verrouillé temporairement (${lockoutRemaining}s)`)
+                      : t.admin.btnLogin}
+                  </span>
                 </button>
               </form>
 
-              <div className="mt-6 p-3 rounded-xl bg-[#18181C] border border-zinc-800 text-[11px] text-zinc-400">
-                <span>Code PIN initial par défaut : </span>
-                <strong className="text-[#D4AF37]">1234</strong>
-                <p className="mt-1 text-zinc-500">
-                  Vous pourrez le modifier à tout moment dans l'onglet Paramètres.
-                </p>
+              <div className="mt-6 p-3 rounded-xl bg-[#141417] border border-zinc-800/80 text-[11px] text-zinc-500 flex items-center justify-center gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span>حماية مشددة: حظر آلي بعد 3 محاولات خاطئة لمنع أي تخمين.</span>
               </div>
             </div>
           ) : (
             /* AUTHENTICATED DASHBOARD */
             <div>
+              {/* Default PIN warning banner if still active */}
+              {isDefaultPin && (
+                <div className="mb-6 p-4 rounded-xl bg-amber-950/60 border border-amber-600 text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold text-amber-300 text-sm mb-0.5">
+                        {t.admin.defaultPinWarningTitle}
+                      </strong>
+                      <span className="leading-relaxed">
+                        {t.admin.defaultPinWarningText}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('security')}
+                    className="px-4 py-2 rounded-lg bg-[#D4AF37] hover:bg-[#F3E5AB] text-black font-bold whitespace-nowrap shadow cursor-pointer text-xs"
+                  >
+                    {language === 'ar' ? 'تعيين كلمة مرور خاصة الآن 🔒' : 'Changer le code maintenant 🔒'}
+                  </button>
+                </div>
+              )}
+
               {/* Tab Navigation */}
               <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-3 mb-6">
                 <button
                   onClick={() => { setActiveTab('products'); setEditingProduct(null); }}
-                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                     activeTab === 'products'
                       ? 'bg-[#D4AF37] text-black shadow'
                       : 'bg-[#18181C] text-zinc-300 hover:text-white'
@@ -420,7 +600,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
                 <button
                   onClick={() => { setActiveTab('orders'); setEditingProduct(null); }}
-                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                     activeTab === 'orders'
                       ? 'bg-[#D4AF37] text-black shadow'
                       : 'bg-[#18181C] text-zinc-300 hover:text-white'
@@ -430,21 +610,37 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                   <span>{t.admin.tabOrders} ({orders.length})</span>
                 </button>
 
+                {/* Dedicated Security & Privacy Tab */}
+                <button
+                  onClick={() => { setActiveTab('security'); setEditingProduct(null); }}
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer relative ${
+                    activeTab === 'security'
+                      ? 'bg-[#D4AF37] text-black shadow'
+                      : 'bg-[#18181C] text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{t.admin.tabSecurity}</span>
+                  {isDefaultPin && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping absolute -top-1 -right-1" />
+                  )}
+                </button>
+
                 <button
                   onClick={() => { setActiveTab('settings'); setEditingProduct(null); }}
-                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                     activeTab === 'settings'
                       ? 'bg-[#D4AF37] text-black shadow'
                       : 'bg-[#18181C] text-zinc-300 hover:text-white'
                   }`}
                 >
-                  <Settings className="w-4 h-4" />
+                  <Download className="w-4 h-4" />
                   <span>{t.admin.tabSettings}</span>
                 </button>
 
                 <button
                   onClick={() => { setActiveTab('guide'); setEditingProduct(null); }}
-                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer ${
                     activeTab === 'guide'
                       ? 'bg-[#D4AF37] text-black shadow'
                       : 'bg-[#18181C] text-zinc-300 hover:text-white'
@@ -454,6 +650,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                   <span>{t.admin.tabGuide}</span>
                 </button>
               </div>
+
 
               {/* TAB 1: PRODUCT MANAGEMENT */}
               {activeTab === 'products' && (
@@ -978,7 +1175,227 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 </div>
               )}
 
-              {/* TAB 3: SETTINGS & BACKUP */}
+              {/* TAB 3: SECURITY & ACCESS CONTROL (NEW DEDICATED SECURITY TAB) */}
+              {activeTab === 'security' && (
+                <div className="space-y-6 max-w-2xl font-sans-clean text-xs">
+                  
+                  {/* Status & Feedback message */}
+                  {securityActionMsg && (
+                    <div className={`p-4 rounded-xl flex items-center gap-2.5 ${
+                      securityActionMsg.success 
+                        ? 'bg-emerald-950/70 border border-emerald-700 text-emerald-200' 
+                        : 'bg-red-950/70 border border-red-700 text-red-200'
+                    }`}>
+                      {securityActionMsg.success ? (
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                      )}
+                      <span>{securityActionMsg.text}</span>
+                    </div>
+                  )}
+
+                  {/* 1. MASTER PASSWORD MANAGER */}
+                  <div className="p-5 rounded-2xl bg-[#16161A] border border-zinc-800 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-serif-luxury text-base font-bold text-white flex items-center gap-2">
+                          <KeyRound className="w-4 h-4 text-[#D4AF37]" />
+                          <span>{t.admin.changePinTitle}</span>
+                        </h3>
+                        <p className="text-zinc-400 text-xs mt-1 leading-relaxed">
+                          {language === 'ar'
+                            ? 'حدد كلمة مرور سرية قوية خاصة بك (أرقام أو حروف أو رموز). هذه الكلمة تمنع أي شخص آخر من دخول لوحة التحكم.'
+                            : 'Définissez votre mot de passe maître personnel (chiffres, lettres ou symboles) pour interdire tout accès non autorisé.'}
+                        </p>
+                      </div>
+
+                      <div className={`px-2.5 py-1 rounded-full text-[11px] font-bold border shrink-0 ${
+                        isDefaultPin 
+                          ? 'bg-red-950/80 text-red-300 border-red-700 animate-pulse' 
+                          : 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
+                      }`}>
+                        {isDefaultPin 
+                          ? (language === 'ar' ? 'غير آمن (1234 افتراضي)' : 'Vulnérable (1234 par défaut)') 
+                          : (language === 'ar' ? 'محمي بكلمة مخصصة 🔒' : 'Sécurisé 🔒')}
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleSaveMasterPassword} className="space-y-3 pt-1 max-w-md">
+                      <div>
+                        <label className="block text-zinc-300 font-semibold mb-1">
+                          {t.admin.newPinLabel}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={newMasterPassword}
+                          onChange={(e) => setNewMasterPassword(e.target.value)}
+                          placeholder={language === 'ar' ? 'كلمة المرور الجديدة (مثال: Dz@Global2026)' : 'Nouveau mot de passe maître...'}
+                          className="w-full bg-[#18181C] border border-zinc-700 focus:border-[#D4AF37] rounded-xl px-3.5 py-2.5 text-white text-xs placeholder-zinc-500 focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-zinc-300 font-semibold mb-1">
+                          {language === 'ar' ? 'تأكيد كلمة المرور الجديدة :' : 'Confirmer le nouveau mot de passe :'}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={confirmMasterPassword}
+                          onChange={(e) => setConfirmMasterPassword(e.target.value)}
+                          placeholder={language === 'ar' ? 'أعد كتابة كلمة المرور للتأكيد...' : 'Répétez le mot de passe...'}
+                          className="w-full bg-[#18181C] border border-zinc-700 focus:border-[#D4AF37] rounded-xl px-3.5 py-2.5 text-white text-xs placeholder-zinc-500 focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black font-bold text-xs shadow hover:opacity-95 transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>{t.admin.btnSavePin}</span>
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* 2. STEALTH MODE (HIDE ADMIN ACCESS BUTTONS FROM PUBLIC) */}
+                  <div className="p-5 rounded-2xl bg-[#16161A] border border-zinc-800 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-serif-luxury text-base font-bold text-white">
+                            {t.admin.stealthModeTitle}
+                          </h3>
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30 font-semibold">
+                            {language === 'ar' ? 'حماية سرية' : 'Recommandé'}
+                          </span>
+                        </div>
+                        <p className="text-zinc-400 text-xs mt-1 leading-relaxed">
+                          {t.admin.stealthModeDesc}
+                        </p>
+                      </div>
+
+                      {/* Switch button */}
+                      <button
+                        type="button"
+                        onClick={handleToggleStealthMode}
+                        className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          securityConfig.stealthMode ? 'bg-[#D4AF37]' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            securityConfig.stealthMode ? (language === 'ar' ? '-translate-x-6' : 'translate-x-6') : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-[#121215] border border-zinc-800 text-[11px] text-zinc-400 space-y-1.5 leading-relaxed">
+                      <strong className="text-[#F3E5AB] block">
+                        {language === 'ar' ? 'كيف تفتح لوحة التحكم وأنت في وضع التخفي ؟' : 'Comment accéder au panneau en Mode Furtif ?'}
+                      </strong>
+                      <ul className="list-disc list-inside space-y-1 text-zinc-300">
+                        <li>
+                          {language === 'ar' 
+                            ? 'اضغط 3 مرات متتالية سريعة على شعار Products Global Dz أعلى الموقع.' 
+                            : 'Tapez 3 fois rapidement sur le logo en haut de la page.'}
+                        </li>
+                        <li>
+                          {language === 'ar'
+                            ? 'أو اكتب في نهاية رابط الموقع: #admin (مثال: products-global-dz2.vercel.app/#admin).'
+                            : 'Ou ajoutez #admin à la fin de l\'URL (ex: products-global-dz2.vercel.app/#admin).'}
+                        </li>
+                        <li>
+                          {language === 'ar'
+                            ? 'أو اضغط من لوحة المفاتيح: Ctrl + Shift + A'
+                            : 'Ou utilisez le raccourci clavier : Ctrl + Shift + A'}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* 3. SITE-WIDE LOCK (PRIVATE STORE MODE) */}
+                  <div className="p-5 rounded-2xl bg-[#16161A] border border-zinc-800 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-serif-luxury text-base font-bold text-white">
+                            {t.admin.siteLockTitle}
+                          </h3>
+                          {securityConfig.siteLockEnabled && (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
+                              {language === 'ar' ? 'الموقع مغلق حالياً' : 'Site Verrouillé'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-zinc-400 text-xs mt-1 leading-relaxed">
+                          {t.admin.siteLockDesc}
+                        </p>
+                      </div>
+
+                      {/* Switch button */}
+                      <button
+                        type="button"
+                        onClick={handleToggleSiteLock}
+                        className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          securityConfig.siteLockEnabled ? 'bg-amber-500' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            securityConfig.siteLockEnabled ? (language === 'ar' ? '-translate-x-6' : 'translate-x-6') : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-zinc-500">
+                      {language === 'ar'
+                        ? 'عند تشغيل هذا الخيار، لن يستطيع أي زائر رؤية الموقع أو المنتجات بدون إدخال كلمة المرور الرئيسية أولاً.'
+                        : 'Activez cette option si vous voulez que personne ne puisse consulter la boutique tant que vous n\'avez pas terminé vos préparatifs.'}
+                    </div>
+                  </div>
+
+                  {/* 4. ACTIVE SESSIONS & DEVICE SECURITY */}
+                  <div className="p-5 rounded-2xl bg-[#16161A] border border-zinc-800 space-y-3">
+                    <h3 className="font-serif-luxury text-base font-bold text-white flex items-center gap-2">
+                      <Fingerprint className="w-4 h-4 text-[#D4AF37]" />
+                      <span>{language === 'ar' ? 'أمان الجلسات والأجهزة المعتمدة' : 'Sessions et Appareils Autorisés'}</span>
+                    </h3>
+                    <p className="text-zinc-400 text-xs leading-relaxed">
+                      {language === 'ar'
+                        ? 'إذا شككت أن هناك شخصاً تمكن من معرفة الرمز أو استخدم جهازك، يمكنك بنقرة واحدة إغلاق كافة الجلسات المفتوحة وإجباره على الخروج فوراً.'
+                        : 'Déconnectez immédiatement toutes les sessions actives sur l\'ensemble des ordinateurs et téléphones.'}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleRevokeSessions}
+                        className="px-4 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-200 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>{t.admin.revokeSessionsBtn}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleResetLockout}
+                        className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'إعادة ضبط عداد المحاولات الفاشلة' : 'Réinitialiser le compteur de tentatives'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* TAB 4: SETTINGS & BACKUP */}
               {activeTab === 'settings' && (
                 <div className="space-y-6 max-w-2xl">
                   
@@ -1003,7 +1420,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                     <div className="flex flex-wrap gap-3 pt-2">
                       <button
                         onClick={handleExportJson}
-                        className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-[#D4AF37] hover:text-black text-zinc-200 text-xs font-semibold flex items-center gap-2 transition-colors"
+                        className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-[#D4AF37] hover:text-black text-zinc-200 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
                       >
                         <Download className="w-4 h-4" />
                         <span>{t.admin.btnExport}</span>
@@ -1028,7 +1445,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                             onProductsUpdated();
                           }
                         }}
-                        className="px-4 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center gap-2 transition-colors"
+                        className="px-4 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
                         <span>Restaurer Catalogue d'Origine</span>
@@ -1036,44 +1453,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Change Admin PIN */}
-                  <div className="p-5 rounded-2xl bg-[#16161A] border border-zinc-800 space-y-3">
-                    <h3 className="font-serif-luxury text-base font-bold text-white flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-[#D4AF37]" />
-                      <span>{t.admin.changePinTitle}</span>
-                    </h3>
-
-                    {pinChangeMsg && (
-                      <div className="p-2.5 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300 text-xs">
-                        {pinChangeMsg}
-                      </div>
-                    )}
-
-                    <form onSubmit={handleUpdatePin} className="space-y-3 max-w-sm">
-                      <div>
-                        <label className="block text-xs text-zinc-400 mb-1">
-                          {t.admin.newPinLabel}
-                        </label>
-                        <input
-                          type="password"
-                          required
-                          value={newPin}
-                          onChange={(e) => setNewPin(e.target.value)}
-                          placeholder="Ex: 8899"
-                          className="w-full bg-[#18181C] border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white"
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        className="px-4 py-2 rounded-lg bg-[#D4AF37] text-black font-semibold text-xs"
-                      >
-                        {t.admin.btnSavePin}
-                      </button>
-                    </form>
-                  </div>
-
                 </div>
               )}
+
 
               {/* TAB 4: FREE HOSTING & ANDROID GUIDE */}
               {activeTab === 'guide' && (

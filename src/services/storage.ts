@@ -122,26 +122,181 @@ export function deleteOrder(orderId: string): void {
   saveStoredOrders(updated);
 }
 
-// --- ADMIN AUTHENTICATION ---
+// --- ADMIN AUTHENTICATION & ADVANCED SECURITY ---
+const SECURITY_KEYS = {
+  CONFIG: 'products_global_dz_security_cfg_v1',
+  AUTH_ATTEMPTS: 'products_global_dz_auth_attempts_v1',
+  SITE_UNLOCKED_SESSION: 'products_global_dz_site_unlocked_session_v1',
+};
+
+export function getSecurityConfig(): import('../types').SecurityConfig {
+  try {
+    const raw = localStorage.getItem(SECURITY_KEYS.CONFIG);
+    if (!raw) {
+      return {
+        stealthMode: false,
+        siteLockEnabled: false,
+        rememberDevice: true,
+      };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      stealthMode: Boolean(parsed.stealthMode),
+      siteLockEnabled: Boolean(parsed.siteLockEnabled),
+      rememberDevice: parsed.rememberDevice !== false,
+    };
+  } catch {
+    return {
+      stealthMode: false,
+      siteLockEnabled: false,
+      rememberDevice: true,
+    };
+  }
+}
+
+export function saveSecurityConfig(cfg: Partial<import('../types').SecurityConfig>): import('../types').SecurityConfig {
+  const current = getSecurityConfig();
+  const updated = { ...current, ...cfg };
+  try {
+    localStorage.setItem(SECURITY_KEYS.CONFIG, JSON.stringify(updated));
+    window.dispatchEvent(new Event('security_updated'));
+  } catch (e) {
+    console.error('Error saving security config:', e);
+  }
+  return updated;
+}
+
 export function getAdminPin(): string {
   return localStorage.getItem(STORAGE_KEYS.ADMIN_PIN) || DEFAULT_PIN;
+}
+
+export function isDefaultPinInUse(): boolean {
+  return getAdminPin() === DEFAULT_PIN;
 }
 
 export function setAdminPin(newPin: string): boolean {
   if (!newPin || newPin.trim().length < 4) return false;
   localStorage.setItem(STORAGE_KEYS.ADMIN_PIN, newPin.trim());
+  // Also clear any lockout state on password update
+  resetAuthAttempts();
   return true;
 }
 
-export function verifyAdminPin(enteredPin: string): boolean {
-  const currentPin = getAdminPin();
-  if (enteredPin.trim() === currentPin) {
-    // Set 8-hour session token
-    const expiry = Date.now() + 8 * 60 * 60 * 1000;
-    localStorage.setItem(STORAGE_KEYS.ADMIN_SESSION, JSON.stringify({ token: 'auth-dz-admin', expiry }));
-    return true;
+export function getAuthAttemptState(): import('../types').AuthAttemptState {
+  try {
+    const raw = localStorage.getItem(SECURITY_KEYS.AUTH_ATTEMPTS);
+    if (!raw) return { failedAttempts: 0, lockoutUntil: null };
+    const parsed = JSON.parse(raw);
+    return {
+      failedAttempts: typeof parsed.failedAttempts === 'number' ? parsed.failedAttempts : 0,
+      lockoutUntil: typeof parsed.lockoutUntil === 'number' ? parsed.lockoutUntil : null,
+    };
+  } catch {
+    return { failedAttempts: 0, lockoutUntil: null };
   }
-  return false;
+}
+
+export function getRemainingLockoutSeconds(): number {
+  const state = getAuthAttemptState();
+  if (!state.lockoutUntil) return 0;
+  const diff = state.lockoutUntil - Date.now();
+  if (diff <= 0) {
+    // Lockout expired, reset attempts
+    resetAuthAttempts();
+    return 0;
+  }
+  return Math.ceil(diff / 1000);
+}
+
+export function resetAuthAttempts(): void {
+  try {
+    localStorage.removeItem(SECURITY_KEYS.AUTH_ATTEMPTS);
+  } catch (e) {
+    console.error('Error resetting attempts:', e);
+  }
+}
+
+function recordFailedAttempt(): { locked: boolean; remainingSeconds: number; attemptsLeft: number } {
+  const state = getAuthAttemptState();
+  const newAttempts = state.failedAttempts + 1;
+  const MAX_ATTEMPTS = 3;
+  const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+  if (newAttempts >= MAX_ATTEMPTS) {
+    const lockoutUntil = Date.now() + LOCKOUT_MS;
+    localStorage.setItem(SECURITY_KEYS.AUTH_ATTEMPTS, JSON.stringify({
+      failedAttempts: newAttempts,
+      lockoutUntil,
+    }));
+    return {
+      locked: true,
+      remainingSeconds: Math.ceil(LOCKOUT_MS / 1000),
+      attemptsLeft: 0,
+    };
+  }
+
+  localStorage.setItem(SECURITY_KEYS.AUTH_ATTEMPTS, JSON.stringify({
+    failedAttempts: newAttempts,
+    lockoutUntil: null,
+  }));
+  return {
+    locked: false,
+    remainingSeconds: 0,
+    attemptsLeft: MAX_ATTEMPTS - newAttempts,
+  };
+}
+
+export interface VerifyAuthResult {
+  success: boolean;
+  locked?: boolean;
+  remainingSeconds?: number;
+  attemptsLeft?: number;
+  message?: string;
+}
+
+export function verifyAdminPinWithProtection(enteredPin: string, rememberDevice = true): VerifyAuthResult {
+  const remainingLock = getRemainingLockoutSeconds();
+  if (remainingLock > 0) {
+    return {
+      success: false,
+      locked: true,
+      remainingSeconds: remainingLock,
+      attemptsLeft: 0,
+    };
+  }
+
+  const currentPin = getAdminPin();
+  if (enteredPin && enteredPin.trim() === currentPin) {
+    resetAuthAttempts();
+    // Expiry: 30 days if rememberDevice, or 8 hours
+    const duration = rememberDevice ? 30 * 24 * 60 * 60 * 1000 : 8 * 60 * 60 * 1000;
+    const expiry = Date.now() + duration;
+    localStorage.setItem(
+      STORAGE_KEYS.ADMIN_SESSION, 
+      JSON.stringify({ 
+        token: 'auth-dz-admin-' + Math.random().toString(36).substring(2),
+        expiry,
+        trustedDevice: rememberDevice 
+      })
+    );
+    // When admin logs in, also auto-unlock site if site lock is on
+    unlockSiteSession();
+    return { success: true };
+  }
+
+  // Failed
+  const failResult = recordFailedAttempt();
+  return {
+    success: false,
+    locked: failResult.locked,
+    remainingSeconds: failResult.remainingSeconds,
+    attemptsLeft: failResult.attemptsLeft,
+  };
+}
+
+// Legacy helper for compatibility
+export function verifyAdminPin(enteredPin: string): boolean {
+  return verifyAdminPinWithProtection(enteredPin).success;
 }
 
 export function isAdminAuthenticated(): boolean {
@@ -162,6 +317,73 @@ export function isAdminAuthenticated(): boolean {
 export function logoutAdmin(): void {
   localStorage.removeItem(STORAGE_KEYS.ADMIN_SESSION);
 }
+
+export function revokeAllSessions(): void {
+  localStorage.removeItem(STORAGE_KEYS.ADMIN_SESSION);
+  localStorage.removeItem(SECURITY_KEYS.SITE_UNLOCKED_SESSION);
+  window.dispatchEvent(new Event('security_updated'));
+}
+
+// --- SITE-WIDE LOCK (PRIVATE STORE MODE) ---
+export function isSiteUnlocked(): boolean {
+  const config = getSecurityConfig();
+  if (!config.siteLockEnabled) return true;
+  if (isAdminAuthenticated()) return true;
+
+  try {
+    const session = sessionStorage.getItem(SECURITY_KEYS.SITE_UNLOCKED_SESSION) ||
+                    localStorage.getItem(SECURITY_KEYS.SITE_UNLOCKED_SESSION);
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed && parsed.expiry && parsed.expiry > Date.now()) {
+        return true;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export function unlockSiteSession(): void {
+  try {
+    const expiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const payload = JSON.stringify({ unlocked: true, expiry });
+    sessionStorage.setItem(SECURITY_KEYS.SITE_UNLOCKED_SESSION, payload);
+    localStorage.setItem(SECURITY_KEYS.SITE_UNLOCKED_SESSION, payload);
+    window.dispatchEvent(new Event('security_updated'));
+  } catch (e) {
+    console.error('Error unlocking site session:', e);
+  }
+}
+
+export function verifySiteLockKey(enteredKey: string): VerifyAuthResult {
+  const remainingLock = getRemainingLockoutSeconds();
+  if (remainingLock > 0) {
+    return {
+      success: false,
+      locked: true,
+      remainingSeconds: remainingLock,
+      attemptsLeft: 0,
+    };
+  }
+
+  const currentPin = getAdminPin();
+  if (enteredKey && enteredKey.trim() === currentPin) {
+    resetAuthAttempts();
+    unlockSiteSession();
+    return { success: true };
+  }
+
+  const failResult = recordFailedAttempt();
+  return {
+    success: false,
+    locked: failResult.locked,
+    remainingSeconds: failResult.remainingSeconds,
+    attemptsLeft: failResult.attemptsLeft,
+  };
+}
+
 
 // --- BACKUP & RESTORE FOR OWNER (MOBILE FRIENDLY) ---
 export function exportCatalogJson(): string {
