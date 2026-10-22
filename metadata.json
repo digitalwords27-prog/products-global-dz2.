@@ -1,0 +1,6 @@
+{
+  "name": "Products Global Dz - Parfumerie & Beauté de Luxe",
+  "description": "Boutique en ligne algérienne haut de gamme spécialisée dans les parfums, cosmétiques, soins de la peau, montres et accessoires de mode. Livraison 69 Wilayas et paiement à la livraison.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
