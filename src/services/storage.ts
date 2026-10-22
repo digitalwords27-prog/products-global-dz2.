@@ -281,6 +281,7 @@ export function verifyAdminPinWithProtection(enteredPin: string, rememberDevice 
     );
     // When admin logs in, also auto-unlock site if site lock is on
     unlockSiteSession();
+    window.dispatchEvent(new Event('admin_auth_changed'));
     return { success: true };
   }
 
@@ -316,11 +317,13 @@ export function isAdminAuthenticated(): boolean {
 
 export function logoutAdmin(): void {
   localStorage.removeItem(STORAGE_KEYS.ADMIN_SESSION);
+  window.dispatchEvent(new Event('admin_auth_changed'));
 }
 
 export function revokeAllSessions(): void {
   localStorage.removeItem(STORAGE_KEYS.ADMIN_SESSION);
   localStorage.removeItem(SECURITY_KEYS.SITE_UNLOCKED_SESSION);
+  window.dispatchEvent(new Event('admin_auth_changed'));
   window.dispatchEvent(new Event('security_updated'));
 }
 

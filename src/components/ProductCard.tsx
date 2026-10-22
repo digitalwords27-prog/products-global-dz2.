@@ -4,7 +4,8 @@ import {
   MessageCircle, 
   Eye, 
   Check, 
-  Star 
+  Star,
+  Edit3
 } from 'lucide-react';
 import { Product, Language } from '../types';
 import { TRANSLATIONS, generateWhatsAppLink } from '../i18n/translations';
@@ -15,6 +16,8 @@ interface ProductCardProps {
   onAddToCart: (product: Product) => void;
   onQuickView: (product: Product) => void;
   onDirectOrder: (product: Product) => void;
+  isAdminLoggedIn?: boolean;
+  onQuickEdit?: (product: Product) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -23,6 +26,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onAddToCart,
   onQuickView,
   onDirectOrder,
+  isAdminLoggedIn,
+  onQuickEdit,
 }) => {
   const t = TRANSLATIONS[language];
   const [addedAnimation, setAddedAnimation] = React.useState(false);
@@ -208,6 +213,21 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               )}
             </button>
           </div>
+
+          {/* Quick Edit Button (Visible ONLY to Logged-in Admin) */}
+          {isAdminLoggedIn && onQuickEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickEdit(product);
+              }}
+              className="w-full mt-2.5 py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-500/20 hover:from-[#D4AF37] hover:to-[#B38728] border border-[#D4AF37]/60 text-[#F3E5AB] hover:text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-[#D4AF37] group-hover:text-black" />
+              <span>{language === 'ar' ? '✏️ تعديل السعر / الصورة' : '✏️ Modifier Prix / Photo'}</span>
+            </button>
+          )}
 
         </div>
       </div>

@@ -8,7 +8,8 @@ import {
   Sparkles,
   Lock,
   Globe,
-  Check
+  Check,
+  Crown
 } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../i18n/translations';
@@ -22,6 +23,7 @@ interface HeaderProps {
   onNavigateCategory: (catId: string) => void;
   onScrollToSection: (sectionId: string) => void;
   stealthMode?: boolean;
+  isAdminLoggedIn?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigateCategory,
   onScrollToSection,
   stealthMode = false,
+  isAdminLoggedIn = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const logoClickRef = React.useRef<{ count: number; timer: any }>({ count: 0, timer: null });
@@ -139,7 +142,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-3">
             <button 
               onClick={handleLogoClick} 
-              title="Products Global Dz (3 clics pour l'accès gérant)"
+              title="Products Global Dz"
               className="text-left rtl:text-right flex items-center gap-3 group focus:outline-none cursor-pointer select-none"
             >
               <div className="relative w-13 h-13 sm:w-16 sm:h-16 rounded-full p-0.5 bg-gradient-to-tr from-[#D4AF37] via-[#F3E5AB] to-[#8C6D1F] shadow-lg shadow-[#D4AF37]/20 flex items-center justify-center group-hover:scale-105 group-hover:shadow-[#D4AF37]/40 transition-all duration-300 shrink-0">
@@ -244,14 +247,15 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Admin Portal Toggle (Hidden in Stealth Mode for maximum security) */}
-            {!stealthMode && (
+            {/* Admin Portal Toggle (Shown ONLY when already logged in as Admin) */}
+            {isAdminLoggedIn && (
               <button
                 onClick={onOpenAdmin}
-                title={t.admin.title}
-                className="p-2.5 sm:p-3 rounded-full bg-[#17171A] border border-zinc-800 text-zinc-400 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 transition-colors"
+                title={language === 'ar' ? 'لوحة تحكم المدير' : 'Espace Administrateur'}
+                className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/80 text-[#F3E5AB] hover:text-black hover:bg-[#D4AF37] font-bold text-xs flex items-center gap-1.5 shadow-md transition-all animate-pulse cursor-pointer"
               >
-                <Lock className="w-4 h-4" />
+                <Crown className="w-4 h-4 text-[#D4AF37]" />
+                <span className="hidden sm:inline">{language === 'ar' ? 'لوحة المدير' : 'Admin'}</span>
               </button>
             )}
 
@@ -360,13 +364,14 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {t.nav.orderNow}
             </button>
-            {!stealthMode && (
+            {/* Mobile Admin Link (Visible ONLY when logged in as Admin) */}
+            {isAdminLoggedIn && (
               <button
                 onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }}
-                className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
               >
-                <Lock className="w-3.5 h-3.5 text-[#D4AF37]" />
-                <span>{t.admin.title}</span>
+                <Crown className="w-4 h-4" />
+                <span>{language === 'ar' ? '👑 لوحة تحكم المدير' : '👑 Espace Administrateur'}</span>
               </button>
             )}
           </div>

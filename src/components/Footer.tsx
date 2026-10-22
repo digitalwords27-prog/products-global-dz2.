@@ -8,7 +8,8 @@ import {
   Sparkles, 
   ShieldCheck, 
   Truck,
-  Heart
+  Heart,
+  Crown
 } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS, generateWhatsAppLink } from '../i18n/translations';
@@ -19,6 +20,7 @@ interface FooterProps {
   onScrollToSection: (sectionId: string) => void;
   onNavigateCategory: (catId: string) => void;
   stealthMode?: boolean;
+  isAdminLoggedIn?: boolean;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -27,6 +29,7 @@ export const Footer: React.FC<FooterProps> = ({
   onScrollToSection,
   onNavigateCategory,
   stealthMode = false,
+  isAdminLoggedIn = false,
 }) => {
   const t = TRANSLATIONS[language];
   const whatsappUrl = generateWhatsAppLink({ language });
@@ -168,15 +171,15 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
             </div>
 
-            {/* Admin Access Discreet Link (Hidden in Stealth Mode) */}
-            {!stealthMode && (
+            {/* Admin Access Discreet Link (Shown ONLY when already logged in as Admin) */}
+            {isAdminLoggedIn && (
               <div className="pt-2">
                 <button
                   onClick={onOpenAdmin}
-                  className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-[#D4AF37] transition-colors bg-[#121215] px-3 py-1.5 rounded-lg border border-zinc-800 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors bg-[#17171C] px-3 py-1.5 rounded-lg border border-amber-500/40 cursor-pointer shadow"
                 >
-                  <Lock className="w-3 h-3" />
-                  <span>{t.footer.adminAccess}</span>
+                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{language === 'ar' ? '👑 لوحة تحكم المدير' : '👑 Espace Administrateur'}</span>
                 </button>
               </div>
             )}

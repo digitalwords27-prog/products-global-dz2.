@@ -21,6 +21,8 @@ interface FeaturedAndOffersProps {
   onAddToCart: (product: Product) => void;
   onQuickView: (product: Product) => void;
   onDirectOrder: (product: Product) => void;
+  isAdminLoggedIn?: boolean;
+  onQuickEditProduct?: (product: Product) => void;
 }
 
 type TabType = 'all' | 'featured' | 'new' | 'offers';
@@ -33,6 +35,8 @@ export const FeaturedAndOffers: React.FC<FeaturedAndOffersProps> = ({
   onAddToCart,
   onQuickView,
   onDirectOrder,
+  isAdminLoggedIn,
+  onQuickEditProduct,
 }) => {
   const t = TRANSLATIONS[language];
   const [activeTab, setActiveTab] = useState<TabType>('all');
@@ -218,6 +222,8 @@ export const FeaturedAndOffers: React.FC<FeaturedAndOffersProps> = ({
                 onAddToCart={onAddToCart}
                 onQuickView={onQuickView}
                 onDirectOrder={onDirectOrder}
+                isAdminLoggedIn={isAdminLoggedIn}
+                onQuickEdit={onQuickEditProduct}
               />
             ))}
           </div>

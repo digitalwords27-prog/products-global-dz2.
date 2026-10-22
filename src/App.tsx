@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Crown, 
+  LogOut, 
+  Settings, 
+  Sparkles 
+} from 'lucide-react';
 import { Language, CategoryId, Product, CartItem, SecurityConfig } from './types';
-import { getStoredProducts, getSecurityConfig, isSiteUnlocked } from './services/storage';
+import { 
+  getStoredProducts, 
+  getSecurityConfig, 
+  isSiteUnlocked,
+  isAdminAuthenticated,
+  logoutAdmin
+} from './services/storage';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { CategoryBar } from './components/CategoryBar';
@@ -11,6 +23,7 @@ import { WhatsAppVIPSection } from './components/WhatsAppVIPSection';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { CartDrawer } from './components/CartDrawer';
 import { AdminModal } from './components/AdminModal';
+import { QuickEditProductModal } from './components/QuickEditProductModal';
 import { SiteLockScreen } from './components/SiteLockScreen';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { Footer } from './components/Footer';
@@ -48,6 +61,10 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+
+  // Admin Session & Quick Edit States
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => isAdminAuthenticated());
+  const [quickEditProduct, setQuickEditProduct] = useState<Product | null>(null);
 
   // Direct order item handoff from product detail to order form
   const [directFormItem, setDirectFormItem] = useState<{ product: Product; quantity: number } | null>(null);
@@ -90,15 +107,25 @@ export default function App() {
     return () => window.removeEventListener('products_updated', handleUpdate);
   }, [syncProducts]);
 
-  // Sync Security Config and Site Lock State
+  // Sync Security Config, Site Lock, and Admin Auth State
   useEffect(() => {
     const handleSecurityUpdate = () => {
       setSecurityConfig(getSecurityConfig());
       setSiteUnlocked(isSiteUnlocked());
+      setIsAdminLoggedIn(isAdminAuthenticated());
     };
     window.addEventListener('security_updated', handleSecurityUpdate);
-    return () => window.removeEventListener('security_updated', handleSecurityUpdate);
+    window.addEventListener('admin_auth_changed', handleSecurityUpdate);
+    return () => {
+      window.removeEventListener('security_updated', handleSecurityUpdate);
+      window.removeEventListener('admin_auth_changed', handleSecurityUpdate);
+    };
   }, []);
+
+  const handleAdminLogout = () => {
+    logoutAdmin();
+    setIsAdminLoggedIn(false);
+  };
 
   // Listen to URL hash (#admin or ?admin=true) for discreet admin access
   useEffect(() => {
@@ -194,6 +221,7 @@ export default function App() {
         onNavigateCategory={handleNavigateCategory}
         onScrollToSection={scrollToSection}
         stealthMode={securityConfig.stealthMode}
+        isAdminLoggedIn={isAdminLoggedIn}
       />
 
       {/* Main Content Area */}
@@ -225,6 +253,8 @@ export default function App() {
           onAddToCart={(p) => handleAddToCart(p, 1)}
           onQuickView={(p) => setDetailProduct(p)}
           onDirectOrder={(p) => handleDirectOrder(p, 1)}
+          isAdminLoggedIn={isAdminLoggedIn}
+          onQuickEditProduct={(p) => setQuickEditProduct(p)}
         />
 
         {/* 7. Why Choose Us Section */}
@@ -251,6 +281,7 @@ export default function App() {
         onScrollToSection={scrollToSection}
         onNavigateCategory={handleNavigateCategory}
         stealthMode={securityConfig.stealthMode}
+        isAdminLoggedIn={isAdminLoggedIn}
       />
 
       {/* Floating WhatsApp Action Button */}
@@ -280,14 +311,73 @@ export default function App() {
       {/* Admin Dashboard Modal (Protected Product & Order Management) */}
       <AdminModal
         isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
+        onClose={() => {
+          setIsAdminOpen(false);
+          setIsAdminLoggedIn(isAdminAuthenticated());
+        }}
         language={language}
         onProductsUpdated={syncProducts}
         onSecurityUpdated={() => {
           setSecurityConfig(getSecurityConfig());
           setSiteUnlocked(isSiteUnlocked());
+          setIsAdminLoggedIn(isAdminAuthenticated());
         }}
       />
+
+      {/* Quick Edit Modal for Admin to instantly change price, photo, and stock */}
+      <QuickEditProductModal
+        product={quickEditProduct}
+        isOpen={Boolean(quickEditProduct)}
+        onClose={() => setQuickEditProduct(null)}
+        language={language}
+        onOpenFullAdmin={() => {
+          setQuickEditProduct(null);
+          setIsAdminOpen(true);
+        }}
+        onProductUpdated={syncProducts}
+      />
+
+      {/* Exclusive Admin Floating Control Bar (Visible ONLY when logged in as Admin) */}
+      {isAdminLoggedIn && (
+        <aside 
+          aria-label="Admin Control Bar"
+          className="fixed bottom-5 left-4 right-4 sm:left-auto sm:right-6 sm:w-auto z-50 bg-[#121216]/95 backdrop-blur-md border border-[#D4AF37] rounded-2xl p-2.5 sm:px-5 sm:py-3 shadow-2xl shadow-black/90 flex items-center justify-between sm:gap-4 animate-slide-up"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-[#F3E5AB] flex items-center gap-1">
+                <Crown className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span>{language === 'ar' ? 'وضع المدير نشط' : 'Mode Administrateur'}</span>
+              </span>
+              <span className="text-[10px] text-zinc-400 hidden sm:inline">
+                {language === 'ar' ? 'أزرار التعديل ظاهرة لك فقط' : 'Boutons d\'édition visibles uniquement pour vous'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsAdminOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B38728] text-black text-xs font-bold hover:brightness-110 transition shadow flex items-center gap-1 cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>{language === 'ar' ? 'لوحة التحكم' : 'Tableau de bord'}</span>
+            </button>
+            <button
+              onClick={handleAdminLogout}
+              className="px-2.5 py-1.5 rounded-xl bg-red-950/70 border border-red-500/40 text-red-300 text-xs font-semibold hover:bg-red-900 transition flex items-center gap-1 cursor-pointer"
+              title={language === 'ar' ? 'خروج من وضع المدير والعودة لمشاهدة المتجر كزبون' : 'Quitter le mode gérant'}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{language === 'ar' ? 'خروج' : 'Déconnexion'}</span>
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Private Site Lock Screen (Active when Site-Wide Lock is enabled) */}
       {securityConfig.siteLockEnabled && !siteUnlocked && (
