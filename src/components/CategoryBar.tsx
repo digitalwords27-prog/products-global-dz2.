@@ -44,7 +44,7 @@ const CATEGORIES: CategoryMeta[] = [
   {
     id: 'watches-men',
     key: 'watchesMen',
-    image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=400&q=80',
+    image: 'https://img.magnific.com/vecteurs-premium/image-noir-blanc-montre-mot-casque-dur-dessus_1249027-354.jpg?semt=ais_hybrid&w=740&q=80',
   },
   {
     id: 'watches-women',
